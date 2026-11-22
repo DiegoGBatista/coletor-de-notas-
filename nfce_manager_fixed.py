@@ -315,6 +315,42 @@ def resumo_por_tipo(arquivos):
     return r
 
 
+def numero_da_chave(chave):
+    """Número da nota (nNF) extraído da chave de 44 dígitos. None se não der."""
+    if chave and len(chave) == 44 and chave.isdigit():
+        return int(chave[25:34])
+    return None
+
+
+def parsear_numeros(texto):
+    """'1050, 1060-1080; 1100' -> [(1050,1050),(1060,1080),(1100,1100)].
+    Texto vazio -> None (sem filtro). Levanta ValueError se algo estiver inválido."""
+    texto = (texto or "").strip()
+    if not texto:
+        return None
+    faixas = []
+    for parte in texto.replace(";", ",").replace(" e ", ",").split(","):
+        parte = parte.strip().replace(" ", "")
+        if not parte:
+            continue
+        ini, sep, fim = parte.replace("–", "-").partition("-")
+        try:
+            a = int(ini)
+            b = int(fim) if sep else a
+        except ValueError:
+            raise ValueError("Número inválido: '" + parte + "'")
+        if b < a:
+            a, b = b, a
+        faixas.append((a, b))
+    return faixas or None
+
+
+def numero_confere(numero, faixas):
+    if faixas is None:
+        return True
+    return numero is not None and any(a <= numero <= b for a, b in faixas)
+
+
 # ----------------------------------------------------------------------------
 # Temas / paleta
 # ----------------------------------------------------------------------------
@@ -1177,6 +1213,15 @@ class ListadorNFCe:
                                         font=self._fonte(12, "bold"))
         self.btn_buscar.pack(side=tk.LEFT, padx=(14, 0), pady=(18, 0))
 
+        linha_num = ctk.CTkFrame(card, fg_color="transparent")
+        linha_num.pack(fill=tk.X, padx=18, pady=(0, 14))
+        ctk.CTkLabel(linha_num, text="NÚMEROS DAS NOTAS (opcional)", text_color=P.TEXT_SUB,
+                     font=self._fonte(10, "bold")).pack(side=tk.LEFT)
+        self.entry_numeros = ctk.CTkEntry(linha_num, height=34, corner_radius=8, fg_color=P.INPUT,
+                                          border_color=P.BORDER, text_color=P.TEXT, font=self._fonte(12),
+                                          placeholder_text="Ex.: 1050, 1060-1080, 1100  (vazio = todas)")
+        self.entry_numeros.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(12, 0))
+
         # --- cartões de resumo --------------------------------------------------
         faixa = ctk.CTkFrame(parent, fg_color="transparent")
         faixa.pack(fill=tk.X, pady=(12, 0))
@@ -1220,13 +1265,15 @@ class ListadorNFCe:
 
         corpo = ctk.CTkFrame(lista, fg_color="transparent")
         corpo.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
-        self.tree = ttk.Treeview(corpo, columns=("nome", "tipo", "data", "tamanho"), show="headings",
+        self.tree = ttk.Treeview(corpo, columns=("nome", "numero", "tipo", "data", "tamanho"), show="headings",
                                  style="Custom.Treeview", selectmode="extended")
         self.tree.heading("nome", text="  Nome do arquivo", anchor="w")
+        self.tree.heading("numero", text="Nº", anchor="w")
         self.tree.heading("tipo", text="Tipo", anchor="w")
         self.tree.heading("data", text="Data", anchor="w")
         self.tree.heading("tamanho", text="Tamanho", anchor="e")
         self.tree.column("nome", width=360, anchor="w")
+        self.tree.column("numero", width=80, anchor="w", stretch=False)
         self.tree.column("tipo", width=110, anchor="w", stretch=False)
         self.tree.column("data", width=140, anchor="w", stretch=False)
         self.tree.column("tamanho", width=100, anchor="e", stretch=False)
@@ -1475,6 +1522,11 @@ class ListadorNFCe:
         except Exception as e:
             self.mostrar_erro("BUSCA", e, "Erro ao buscar arquivos")
             return
+        try:
+            self._faixas_numeros = parsear_numeros(self.entry_numeros.get())
+        except ValueError as e:
+            messagebox.showwarning("Números das notas", str(e) + "\n\nUse assim: 1050, 1060-1080, 1100")
+            return
         self.config["pasta_xml"] = pasta
         if hasattr(self, "entry_smtp"):
             self._ler_campos_config()
@@ -1550,6 +1602,9 @@ class ListadorNFCe:
                 if i % 20 == 0 or i == len(candidatos):
                     _upd(encontrados=len(achados), processados=i, erros=erros, pct=i / total)
 
+            faixas = getattr(self, "_faixas_numeros", None)
+            if faixas is not None:
+                achados = [a for a in achados if numero_confere(numero_da_chave(a.get("chave")), faixas)]
             aplicar_pareamento(achados)
             achados.sort(key=lambda a: a["data"])
             cancelou = dlg.cancelado
@@ -1564,7 +1619,7 @@ class ListadorNFCe:
                     if a["tipo"] == CANCELADA:
                         tags.append("cancelada")
                     self.tree.insert("", tk.END, tags=tuple(tags), values=(
-                        "  " + a["nome"], ROTULO_TIPO_UNICO.get(a["tipo"], "Outro"),
+                        "  " + a["nome"], numero_da_chave(a.get("chave")) or "", ROTULO_TIPO_UNICO.get(a["tipo"], "Outro"),
                         a["data"].strftime("%d/%m/%Y %H:%M"), f"{a['tamanho'] / 1024:.1f} KB  "))
                 r = resumo_por_tipo(achados)
                 self.stat_qtd.configure(text=str(len(achados)))
@@ -1577,7 +1632,9 @@ class ListadorNFCe:
                     messagebox.showinfo("Busca cancelada",
                                         "Busca interrompida. " + str(len(achados)) + " arquivo(s) listados até aqui.")
                 elif not achados:
-                    messagebox.showinfo("Resultado", "Nenhum arquivo encontrado neste período.")
+                    messagebox.showinfo("Resultado", "Nenhum arquivo encontrado"
+                                        + (" com esses números neste período." if faixas is not None
+                                           else " neste período."))
             self.root.after(0, atualizar_ui)
         except Exception as e:
             def _falha():
