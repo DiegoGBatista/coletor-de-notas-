@@ -1,0 +1,63 @@
+name: Gerar instalador
+
+# Como usar: aba "Actions" > "Gerar instalador" > "Run workflow".
+# Quando terminar, baixe o Setup.exe em "Artifacts" (no fim da página da execução).
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  instalador:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir arquivos
+        shell: pwsh
+        run: |
+          foreach ($f in 'icon.ico','logo_automacao2000.png','nfce_manager_fixed.py','instalador.iss','requirements.txt') {
+            if (-not (Test-Path $f)) { throw "Falta o arquivo $f na raiz do repositório" }
+          }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Instalar bibliotecas
+        run: python -m pip install -r requirements.txt
+
+      - name: Gerar o programa
+        shell: pwsh
+        run: >
+          python -m PyInstaller --noconfirm --clean --onedir --windowed
+          --name "Coletor de Notas Fiscais" --icon icon.ico
+          --add-data "icon.ico;." --add-data "logo_automacao2000.png;."
+          --collect-all customtkinter --collect-all reportlab --hidden-import certifi
+          nfce_manager_fixed.py
+
+      - name: Instalar o Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Gerar o instalador
+        shell: pwsh
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" instalador.iss'
+
+      - name: Guardar o instalador para download
+        uses: actions/upload-artifact@v4
+        with:
+          name: Coletor_de_Notas_Fiscais_Setup
+          path: Output/Coletor_de_Notas_Fiscais_Setup.exe
+
+      # Só quando você cria uma versão (tag v3.1, v3.2...): publica o instalador numa "release",
+      # que é o que a verificação de atualização do próprio programa consulta.
+      - name: Publicar release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Output/Coletor_de_Notas_Fiscais_Setup.exe

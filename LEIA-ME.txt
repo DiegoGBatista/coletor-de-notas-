@@ -1,0 +1,67 @@
+﻿COLETOR DE NOTAS FISCAIS - versão 3.1
+=====================================
+
+SEM INSTALAR NADA NO SEU COMPUTADOR
+-----------------------------------
+O GitHub gera o Setup.exe para você, de graça. Este kit já traz o icon.ico e o logo.
+ 1. Extraia este ZIP numa pasta do computador.
+ 2. Crie uma conta em github.com e um repositório PRIVADO (botão "New").
+ 3. Em "Add file > Upload files", arraste TODOS os arquivos e a pasta ".github" da pasta extraída.
+    Se a pasta ".github" não subir, crie-a em "Add file > Create new file", digitando o nome
+    .github/workflows/build.yml  e colando o conteúdo do arquivo build.yml. Depois clique em Commit.
+ 4. Abra a aba "Actions" > "Gerar instalador" > "Run workflow". Leva uns 5 a 10 minutos.
+ 5. Na execução concluída, role até "Artifacts" e baixe "Coletor_de_Notas_Fiscais_Setup".
+    Dentro do zip está o Setup.exe.
+ 6. Desinstale a versão antiga do programa e instale o novo Setup.exe.
+ (Não coloque senhas no repositório. A senha do e-mail agora é digitada dentro do programa.)
+
+O QUE MUDOU
+-----------
+* Notas AUTORIZADAS e CANCELADAS agora são separadas:
+  - Na lista de arquivos aparece a coluna "Tipo" (as canceladas ficam em vermelho)
+    e os contadores "Autorizadas" e "Canceladas".
+  - "Exportar ZIP": o ZIP traz as pastas Autorizadas\ e Canceladas\.
+  - "Enviar E-mail": são enviados ZIPs separados - primeiro os das autorizadas
+    (com o relatório PDF) e depois os das canceladas. Cada grupo é dividido em partes
+    se passar do limite de tamanho.
+  - O programa reconhece as canceladas pelo CONTEÚDO do XML (evento de cancelamento
+    registrado, cStat 135/155), não pelo nome do arquivo.
+  - A busca agora entra nas SUBPASTAS e aceita uma PASTA EXTRA só para canceladas
+    (Configurações > Pastas das notas).
+  - O relatório PDF soma só as autorizadas e lista as canceladas numa tabela à parte.
+* A senha de aplicativo do Gmail NÃO fica mais escrita dentro do programa.
+  Digite-a em Configurações > Conta de envio (ela é salva neste computador).
+
+OU, GERANDO NO SEU PRÓPRIO WINDOWS (precisa instalar Python e Inno Setup)
+----------------------------------------------
+1. Instale o Python 3.11 ou mais novo (python.org) e o Inno Setup 6 (jrsoftware.org).
+2. Copie para esta pasta, da instalação antiga do programa (pasta _internal),
+   os arquivos:  icon.ico  e  logo_automacao2000.png
+3. Dê dois cliques em build.bat  (cria a pasta dist\Coletor de Notas Fiscais).
+4. Abra instalador.iss no Inno Setup e clique em Build > Compile.
+5. O instalador fica em  Output\Coletor_de_Notas_Fiscais_Setup.exe
+
+PARA ATUALIZAR A INSTALAÇÃO QUE JÁ EXISTE (mesmo AppId)
+-------------------------------------------------------
+No Windows, abra o Prompt de Comando e rode:
+  reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" /s /f "Coletor de Notas Fiscais" /d
+(se não achar, repita trocando WOW6432Node\ por nada.)
+Aparece uma chave como  {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}_is1
+Copie o código entre chaves e cole na linha  AppId=  do instalador.iss
+(mantenha as DUAS chaves de abertura:  AppId={{CODIGO}  ).
+
+TESTAR SEM INSTALAR
+-------------------
+  py -m pip install -r requirements.txt
+  py nfce_manager_fixed.py
+
+OBSERVAÇÕES
+-----------
+* Este código foi reconstruído a partir da estrutura do programa original; confira os
+  textos e o visual na primeira execução e me avise do que estiver diferente.
+* A pausa entre e-mails (8s + até 4s aleatórios) e o limite de 18 MB por ZIP foram
+  mantidos/estimados; ajuste PAUSA_ENTRE_PARTES_SEG, JITTER_MAX_SEG e LIMITE_EMAIL_BYTES
+  no topo do .py se precisar.
+* Para trocar o que vai em "Canceladas", edite NOTA_CANCELADA_VAI_PARA_CANCELADAS no .py.
+* Nota cancelada depois de autorizada: com o valor padrão (True) o XML da própria nota vai
+  para "Canceladas" junto do evento; com False, só o evento vai para "Canceladas".
