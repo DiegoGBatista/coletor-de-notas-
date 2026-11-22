@@ -7,7 +7,7 @@ Lista os XMLs de NFC-e de uma pasta, por mês/ano, e permite:
   - gerar um relatório em PDF,
   - enviar os XMLs por e-mail (ZIPs divididos em partes, se necessário).
 
-NOVIDADE (versão 3.1): as notas AUTORIZADAS e as CANCELADAS são separadas.
+NOVIDADE (versão 3.5): as notas AUTORIZADAS e as CANCELADAS são separadas.
   - A busca também reconhece as canceladas (evento de cancelamento, cStat 135/155).
   - O ZIP exportado traz as pastas "Autorizadas" e "Canceladas".
   - O e-mail envia ZIPs separados: um conjunto só de autorizadas e outro só de canceladas.
@@ -81,7 +81,7 @@ SMTP_SERVIDOR_FIXO = "smtp.gmail.com"
 SMTP_PORTA_FIXA = 587
 SMTP_USAR_SSL_FIXO = True
 
-APP_VERSION = "3.1"
+APP_VERSION = "3.5"
 GITHUB_REPO = "luuiz224/coletor-notas-fiscais"
 APP_MUTEX_NAME = "ColetorNotasFiscaisMutex"
 _mutex_handle = None
@@ -726,7 +726,7 @@ class ListadorNFCe:
             "usar_ssl": SMTP_USAR_SSL_FIXO,
             "tema_escuro": False,
             "pasta_xml": PASTA_PADRAO_XML,
-            # novos na versão 3.1
+            # novos na versão 3.5
             "pasta_xml_cancelados": "",     # opcional: outra pasta onde ficam as canceladas
             "buscar_subpastas": True,       # procura também dentro das subpastas
         }

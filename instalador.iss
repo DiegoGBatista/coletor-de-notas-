@@ -1,6 +1,6 @@
 ﻿; Instalador do Coletor de Notas Fiscais — compile com o Inno Setup 6
 #define MyAppName "Coletor de Notas Fiscais"
-#define MyAppVersion "3.1"
+#define MyAppVersion "3.5"
 #define MyAppExeName "Coletor de Notas Fiscais.exe"
 
 [Setup]

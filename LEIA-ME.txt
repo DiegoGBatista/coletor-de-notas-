@@ -1,4 +1,4 @@
-﻿COLETOR DE NOTAS FISCAIS - versão 3.1
+﻿COLETOR DE NOTAS FISCAIS - versão 3.5
 =====================================
 
 SEM INSTALAR NADA NO SEU COMPUTADOR
