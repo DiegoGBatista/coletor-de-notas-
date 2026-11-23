@@ -94,9 +94,15 @@ MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
 # Tipos de nota
 AUTORIZADA = "autorizada"
 CANCELADA = "cancelada"
+CONTINGENCIA = "contingencia"
 OUTRO = "outro"
-ROTULO_TIPO = {AUTORIZADA: "Autorizadas", CANCELADA: "Canceladas", OUTRO: "Outros"}
-ROTULO_TIPO_UNICO = {AUTORIZADA: "Autorizada", CANCELADA: "Cancelada", OUTRO: "Outro"}
+ROTULO_TIPO = {AUTORIZADA: "Autorizadas", CANCELADA: "Canceladas", CONTINGENCIA: "Contingencia", OUTRO: "Outros"}
+ROTULO_TIPO_UNICO = {AUTORIZADA: "Autorizada", CANCELADA: "Cancelada", CONTINGENCIA: "Contingência",
+                     OUTRO: "Outro"}
+TIPOS_ENVIO = (AUTORIZADA, CANCELADA, CONTINGENCIA)   # ordem de ZIPs/e-mails
+PASTA_NO_ZIP = {AUTORIZADA: "Autorizadas", CANCELADA: "Canceladas", CONTINGENCIA: "Contingencia"}
+# tpEmis das notas emitidas em contingência (NFC-e off-line = 9)
+TPEMIS_CONTINGENCIA = {"9", "5", "6", "7"}
 
 # True  -> o XML da nota que foi cancelada vai para "Canceladas", junto do evento.
 # False -> o XML da nota fica em "Autorizadas" e só o evento de cancelamento vai para "Canceladas".
@@ -274,6 +280,9 @@ def classificar_xml(caminho):
             return AUTORIZADA, chave
         if cstat in CSTAT_CANCELADA_PROTOCOLO:
             return CANCELADA, chave
+        # sem protocolo de autorização + emitida em contingência (ainda não transmitida)
+        if cstat is None and _texto(raiz, ".//{*}ide/{*}tpEmis") in TPEMIS_CONTINGENCIA:
+            return CONTINGENCIA, chave
         return OUTRO, chave
 
     if nome in ("procEventoNFe", "evento", "envEvento"):
@@ -303,13 +312,13 @@ def aplicar_pareamento(arquivos):
     if NOTA_CANCELADA_VAI_PARA_CANCELADAS:
         canceladas = {a["chave"] for a in arquivos if a.get("tipo") == CANCELADA and a.get("chave")}
         for a in arquivos:
-            if a.get("tipo") == AUTORIZADA and a.get("chave") in canceladas:
+            if a.get("tipo") in (AUTORIZADA, CONTINGENCIA) and a.get("chave") in canceladas:
                 a["tipo"] = CANCELADA
     return arquivos
 
 
 def resumo_por_tipo(arquivos):
-    r = {AUTORIZADA: 0, CANCELADA: 0, OUTRO: 0}
+    r = {AUTORIZADA: 0, CANCELADA: 0, CONTINGENCIA: 0, OUTRO: 0}
     for a in arquivos:
         r[a.get("tipo", OUTRO)] = r.get(a.get("tipo", OUTRO), 0) + 1
     return r
@@ -1238,6 +1247,7 @@ class ListadorNFCe:
         self.stat_qtd = cartao_status("0", "XMLs encontrados")
         self.stat_aut = cartao_status("0", "Autorizadas", P.SUCCESS)
         self.stat_canc = cartao_status("0", "Canceladas", P.ACCENT)
+        self.stat_cont = cartao_status("0", "Contingência", P.ACCENT)
         self.stat_busca = cartao_status("—", "Última busca")
 
         # --- lista --------------------------------------------------------------
@@ -1625,6 +1635,7 @@ class ListadorNFCe:
                 self.stat_qtd.configure(text=str(len(achados)))
                 self.stat_aut.configure(text=str(r[AUTORIZADA]))
                 self.stat_canc.configure(text=str(r[CANCELADA]))
+                self.stat_cont.configure(text=str(r[CONTINGENCIA]))
                 self.lbl_cab_count.configure(text="(" + str(len(achados)) + ")")
                 self.stat_busca.configure(text=datetime.now().strftime("%d/%m/%Y %H:%M"))
                 _restaurar()
@@ -1644,8 +1655,8 @@ class ListadorNFCe:
             self.mostrar_erro("BUSCA", e, "Erro ao buscar arquivos")
 
     def _notas_para_envio(self):
-        """Só entram em ZIP/e-mail as notas AUTORIZADAS e as CANCELADAS."""
-        return [a for a in self.arquivos_encontrados if a.get("tipo") in (AUTORIZADA, CANCELADA)]
+        """Só entram em ZIP/e-mail as notas AUTORIZADAS, CANCELADAS e em CONTINGÊNCIA."""
+        return [a for a in self.arquivos_encontrados if a.get("tipo") in TIPOS_ENVIO]
 
     # ------------------------------------------------------------------ exportar ZIP
     def exportar_xmls_zip(self):
@@ -1666,9 +1677,9 @@ class ListadorNFCe:
             while os.path.exists(destino):
                 n += 1
                 destino = os.path.join(desktop, f"{base} ({n}).zip")
-            usados = {AUTORIZADA: set(), CANCELADA: set()}
-            qtd = {AUTORIZADA: 0, CANCELADA: 0}
-            pasta_zip = {AUTORIZADA: "Autorizadas", CANCELADA: "Canceladas"}
+            usados = {t: set() for t in TIPOS_ENVIO}
+            qtd = {t: 0 for t in TIPOS_ENVIO}
+            pasta_zip = PASTA_NO_ZIP
             with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:
                 for a in notas:
                     nome = os.path.basename(a["caminho"])
@@ -1682,7 +1693,8 @@ class ListadorNFCe:
                     qtd[a["tipo"]] += 1
             ignorados = len(self.arquivos_encontrados) - len(notas)
             msg = ("Arquivo salvo na Área de Trabalho:\n" + os.path.basename(destino) +
-                   f"\n\nAutorizadas: {qtd[AUTORIZADA]}\nCanceladas: {qtd[CANCELADA]}")
+                   f"\n\nAutorizadas: {qtd[AUTORIZADA]}\nCanceladas: {qtd[CANCELADA]}"
+                   + (f"\nContingência: {qtd[CONTINGENCIA]}" if qtd[CONTINGENCIA] else ""))
             if ignorados:
                 msg += f"\n\n({ignorados} arquivo(s) fora do ZIP: denegadas, rejeitadas ou que não são NFC-e.)"
             messagebox.showinfo("Sucesso", msg)
@@ -1883,7 +1895,7 @@ class ListadorNFCe:
             {'caminho', 'nome', 'tipo', 'parte', 'total_partes', 'qtd', 'qtd_tipo'}
         Se um tipo não tem arquivos, nenhum ZIP é criado para ele."""
         saida = []
-        for tipo in (AUTORIZADA, CANCELADA):
+        for tipo in TIPOS_ENVIO:
             grupo = [a for a in arquivos if a.get("tipo") == tipo]
             if not grupo:
                 continue
@@ -2039,8 +2051,9 @@ class ListadorNFCe:
                 "Vá em Configurações > Conta de envio e preencha o campo 'Senha de aplicativo'.")
             return
         r = resumo_por_tipo(self.arquivos_encontrados)
-        if r[AUTORIZADA] + r[CANCELADA] == 0:
-            messagebox.showwarning("Aviso", "Não há notas autorizadas ou canceladas na lista para enviar.")
+        n_env = r[AUTORIZADA] + r[CANCELADA] + r[CONTINGENCIA]
+        if n_env == 0:
+            messagebox.showwarning("Aviso", "Não há notas autorizadas, canceladas ou em contingência na lista para enviar.")
             return
         self._destinatarios_envio = destinatarios
         try:
@@ -2051,8 +2064,9 @@ class ListadorNFCe:
         if not messagebox.askyesno(
                 "Confirmar envio",
                 "Confira antes de enviar:\n\nPeríodo:  " + mes_nome + " - " + str(ano) +
-                "\nArquivos:  " + str(r[AUTORIZADA] + r[CANCELADA]) +
-                "  (" + str(r[AUTORIZADA]) + " autorizadas, " + str(r[CANCELADA]) + " canceladas)" +
+                "\nArquivos:  " + str(n_env) +
+                "  (" + str(r[AUTORIZADA]) + " autorizadas, " + str(r[CANCELADA]) + " canceladas" +
+                (", " + str(r[CONTINGENCIA]) + " em contingência" if r[CONTINGENCIA] else "") + ")" +
                 "\nPara:  " + ", ".join(destinatarios) + "\n\nDeseja enviar agora?"):
             return
         self.btn_enviar.configure(state="disabled")
@@ -2063,7 +2077,7 @@ class ListadorNFCe:
     def enviar_email_smtp(self):
         """Orquestra a criação dos ZIPs em partes e o envio de cada um.
         A barra de progresso já foi aberta por enviar_email_thread.
-        Envia primeiro os ZIPs das AUTORIZADAS e depois os das CANCELADAS."""
+        Envia primeiro os ZIPs das AUTORIZADAS, depois CANCELADAS e por fim CONTINGÊNCIA."""
         t0 = time.monotonic()
         temp_dir = None
         enviados = 0
@@ -2078,7 +2092,7 @@ class ListadorNFCe:
             zips = self.criar_zips_em_partes(notas, temp_dir, mes_seguro, ano)
             t_zip = time.monotonic() - t
             if not zips:
-                raise ValueError("Nenhuma nota autorizada ou cancelada para enviar.")
+                raise ValueError("Nenhuma nota autorizada, cancelada ou em contingência para enviar.")
 
             self._prog(0.08, "Gerando relatório PDF...")
             t = time.monotonic()
@@ -2118,7 +2132,8 @@ class ListadorNFCe:
                 " | compactar=" + f"{t_zip:.1f}" + "s pdf=" + f"{t_pdf:.1f}" + "s espera=" + f"{t_espera:.1f}" +
                 "s envio_smtp=" + f"{t_envio:.1f}" + "s | TOTAL=" + f"{time.monotonic() - t0:.1f}" + "s")
             texto = (str(enviados) + " email(s) enviado(s) com sucesso!\n\nAutorizadas: " + str(r[AUTORIZADA]) +
-                     "\nCanceladas: " + str(r[CANCELADA]))
+                     "\nCanceladas: " + str(r[CANCELADA]) +
+                     ("\nContingência: " + str(r[CONTINGENCIA]) if r[CONTINGENCIA] else ""))
             self.root.after(300, lambda: messagebox.showinfo("Sucesso", texto))
         except Exception as e:
             self.mostrar_erro("ENVIO", e, "Erro no envio")
